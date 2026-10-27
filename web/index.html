@@ -31,6 +31,12 @@
 
   <title>flutter_ink_folio</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- flutter_inappwebview 的 web 实现支撑脚本（iframe WebView + evaluateJavascript）。
+       必须同步阻塞加载并早于 flutter_bootstrap.js：插件 registerWith 会往
+       window.flutter_inappwebview 上挂 nativeCommunication，晚于它加载则
+       onLoadStop / onConsoleMessage 等回调全部失效，阅读页会白屏。 -->
+  <script src="assets/packages/flutter_inappwebview_web/assets/web/web_support.js"></script>
 </head>
 <body>
   <!--

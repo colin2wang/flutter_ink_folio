@@ -25,7 +25,8 @@ try {
   } else {
     if (-not (Test-Path $dest)) { New-Item $dest -ItemType Directory | Out-Null }
 
-    # Keep README.md: it documents the INLINE_MAIN_JS contract that reader_page.dart relies on.
+    # Keep README.md: it documents the flat/single-entry/classic-script contract
+    # that reader_page.dart and web_asset_copier.dart rely on.
     # Everything else is build output and gets fully replaced.
     Get-ChildItem $dest -Exclude README.md | Remove-Item -Recurse -Force
     Copy-Item -Path "dist\*" -Destination $dest -Recurse -Force

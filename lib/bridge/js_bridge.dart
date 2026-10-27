@@ -5,6 +5,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/app_log.dart';
 import 'bridge_protocol.dart';
+// web 平台改用 postMessage 收上行消息（addJavaScriptHandler 在该平台未实现）
+import 'web_message_stub.dart' if (dart.library.html) 'web_message_web.dart';
 
 typedef TsEventHandler = void Function(String event, Map<String, dynamic> payload);
 
@@ -21,10 +23,20 @@ class JsBridge {
   InAppWebViewController? _controller;
   bool _pageReady = false;
   final List<Map<String, dynamic>> _pending = [];
+  void Function()? _stopWebListener;
 
-  /// JavaScriptHandler：TS 侧统一通过 callHandler('event', msg) 上行
+  /// TS → Dart 上行通道绑定。
+  ///
+  /// - Android/iOS：JavaScriptHandler，TS 侧 callHandler('event', msg)。
+  /// - Web(chrome/edge)：flutter_inappwebview_web 未实现 addJavaScriptHandler
+  ///   （调用即抛 UnimplementedError，导致阅读页整页崩成白屏），
+  ///   改为监听宿主 window 的 message 事件，收引擎 postMessage 上来的 JSON。
   void bind(InAppWebViewController controller) {
     _controller = controller;
+    if (kIsWeb) {
+      _stopWebListener = listenEngineMessages(_handleMessage);
+      return;
+    }
     controller.addJavaScriptHandler(
       handlerName: DartEvent.handlerName,
       callback: (args) {
@@ -39,13 +51,7 @@ class JsBridge {
           } else {
             return null;
           }
-          final event = msg['action'] as String?;
-          final payload = (msg['payload'] as Map?)?.cast<String, dynamic>() ?? {};
-          if (event != null) {
-            if (event == DartEvent.onReady) _pageReady = true;
-            _onEvent(event, payload);
-            if (event == DartEvent.onReady) _flushPending();
-          }
+          _handleMessage(msg);
         } catch (e) {
           appLog('JsBridge handler error: $e');
         }
@@ -54,7 +60,22 @@ class JsBridge {
     );
   }
 
+  void _handleMessage(Map<String, dynamic> msg) {
+    try {
+      final event = msg['action'] as String?;
+      final payload = (msg['payload'] as Map?)?.cast<String, dynamic>() ?? {};
+      if (event == null) return;
+      if (event == DartEvent.onReady) _pageReady = true;
+      _onEvent(event, payload);
+      if (event == DartEvent.onReady) _flushPending();
+    } catch (e) {
+      appLog('JsBridge message error: $e');
+    }
+  }
+
   void detach() {
+    _stopWebListener?.call();
+    _stopWebListener = null;
     _controller = null;
     _pageReady = false;
     _pending.clear();

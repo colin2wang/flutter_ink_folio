@@ -19,7 +19,8 @@
 ## 关键约定（项目特有）
 - 包名是 `ebook_reader`，与目录名 flutter_ink_folio 不同——import 一律 `package:ebook_reader/...`
 - 墨水屏原则：**瞬时无动画**（主题/路由 Duration.zero）、全局禁 OverscrollGlow、灰阶配色；新 UI 不得引入转场/发光动画
-- web_engine **不用 CFI** 定位：TXT/EPUB 统一用「全局字符偏移」（进度 `startOffset`、划线 `start`/`end`），EPUB 的 `cfi` 字段内容格式为 `<spineIndex>#<anchor>`；产物必须扁平且入口固定为 `main.js`（`reader_page.dart` 按 `assets/web/main.js` 硬编码读取，带 hash 的名字会让 web 平台崩溃）
+- web_engine **不用 CFI** 定位：TXT/EPUB 统一用「全局字符偏移」（进度 `startOffset`、划线 `start`/`end`），EPUB 的 `cfi` 字段内容格式为 `<spineIndex>#<anchor>`；产物必须扁平且入口固定为 `main.js`（`reader_page.dart` 按 `assets/web/main.js` 硬编码读取，带 hash 的名字会让 web 平台崩溃）；产物还必须是**经典脚本**（`format: 'iife'` + `defer`，不能 `type="module"`）——Android WebView 与本地浏览器均按 `file://` 加载，该 origin 为 `null`，module 脚本会被 CORS 拦截致引擎不执行、阅读页白屏
 - widget 测试环境无平台插件：用 `Repositories.overrideForTest()` 注入内存实现（见 test/widget_test.dart）
+- `flutter run -d chrome/edge` 的两个硬性前提：`web/index.html` 必须**同步**（无 defer/async）引入 `assets/packages/flutter_inappwebview_web/assets/web/web_support.js`（晚于插件 registerWith 加载则 onLoadStop 全失效）；web 平台**没有** `addJavaScriptHandler`/`callHandler`（调用抛 UnimplementedError），阅读页改为 about:blank iframe + `evaluateJavascript` 注入 `main.js`，上行走 `parent.postMessage`（见 `lib/bridge/web_message_web.dart`）；该平台只能读 Dart 传下来的 txt 正文，epub 需 fetch 本地文件不支持
 - `.gitattributes`：仓库统一 LF；根目录 .ps1（init.ps1、build_web.ps1）显式 CRLF——**PowerShell 5.1 读 UTF-8 无 BOM 的 .ps1 会按 GBK 乱码**，含中文注释的 .ps1 必须带 BOM
 - .gitignore 已存在且经人工整理，勿随意改动；COMMIT.md 为本地提交草稿不入库

@@ -6,17 +6,22 @@ export default defineConfig({
   plugins: [
     {
       /**
-       * web 平台（flutter run -d chrome）走 iframe，没有 base URL，
-       * 相对引用的 <script src> 会 404；因此 Flutter 壳会读 assets/web/main.js
-       * 并把它内联进这个占位符（见 reader_page._resolveEntry）。
+       * 产物是经典脚本（format: 'iife'），index.html 不能再用 <script type="module">。
        *
-       * 放在构建末尾注入，避免 Vite 把这个内联脚本卷进打包流程。
+       * Android/WebView 与直接用浏览器打开 index.html 都是 file:// 加载，该 origin 为
+       * 'null'，module 脚本强制走 CORS → "Access to script ... blocked by CORS policy"，
+       * 引擎整个不执行 → 阅读页白屏。经典脚本 + defer 无此限制。
+       *
+       * 放在构建末尾做，避免 Vite 把改写过的脚本标签卷进打包流程。
        */
-      name: 'ink-inline-main-js-slot',
+      name: 'ink-file-protocol-html',
       transformIndexHtml: {
         order: 'post',
         handler: html =>
-          html.replace('</body>', '    <script>/*INLINE_MAIN_JS*/</script>\n  </body>'),
+          html.replace(/<script([^>]*)\stype="module"([^>]*)>/g, (_m, before, after) => {
+            const attrs = `${before}${after}`.replace(/\s*crossorigin(?:="[^"]*")?/g, '');
+            return `<script${attrs} defer>`;
+          }),
       },
     },
   ],
@@ -34,6 +39,11 @@ export default defineConfig({
         chunkFileNames: '[name].js',
         assetFileNames: '[name][extname]',
         manualChunks: undefined,
+        // 必须是 IIFE 经典脚本：产物通过 file:// 加载（Android WebView / 本地浏览器打开），
+        // ES module 在该协议下会被 CORS 拦截导致引擎不执行。单入口 + inlineDynamicImports
+        // （Vite 对 iife 自动开启），故不会出现多 chunk 的 import/export。
+        format: 'iife',
+        name: 'InkReaderEngine',
       },
     },
   },
