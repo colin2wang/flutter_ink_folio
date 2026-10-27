@@ -1,4 +1,5 @@
 import { DartEvent, emit } from './bridge';
+import { Pager } from './pager';
 import {
   BookEngine,
   HighlightRecord,
@@ -8,24 +9,24 @@ import {
   TocEntry,
 } from './types';
 import { applyTheme } from './renderer';
+import { clampColor, escapeAttr, escapeHtml, offsetOf } from './text';
 
 /**
  * TXT 引擎：CSS 多栏分页 + 字符偏移定位 + 偏移高亮。
  * 也是 assets/web 回退引擎（vanilla JS）的 TS 原型，两者行为一致。
+ *
+ * 排版与翻页交给 Pager（与 EPUB 引擎共用），这里只负责纯文本 → HTML。
  */
 export class TxtEngine implements BookEngine {
-  private viewport: HTMLElement;
-  private content: HTMLElement;
+  private readonly viewport: HTMLElement;
+  private readonly content: HTMLElement;
+  private readonly pager: Pager;
   private text = '';
-  private page = 0;
-  private total = 1;
   private toc: TocEntry[] = [];
   private annotations = new Map<string, HighlightRecord>();
   private theme: ThemePayload = {
     mode: 'paper', fontSize: 19, lineHeight: 1.7, fontFamily: 'serif',
   };
-  private chapterTitle = '';
-  private resizeTimer: number | undefined;
 
   constructor(surface: HTMLElement) {
     this.viewport = document.createElement('div');
@@ -35,15 +36,19 @@ export class TxtEngine implements BookEngine {
     this.viewport.appendChild(this.content);
     surface.appendChild(this.viewport);
 
-    window.addEventListener('resize', () => {
-      if (this.resizeTimer) window.clearTimeout(this.resizeTimer);
-      this.resizeTimer = window.setTimeout(() => this.relayout(true), 80);
+    this.pager = new Pager({
+      viewport: this.viewport,
+      content: this.content,
+      onPageChanged: () => this.notifyChanged(),
     });
+  }
+
+  get contentRoot(): HTMLElement {
+    return this.content;
   }
 
   async open(payload: OpenBookPayload): Promise<void> {
     this.text = payload.text ?? (await this.loadFile(payload.filePath));
-    this.page = 0;
     this.toc = buildToc(this.text);
     this.render();
     applyTheme(this.viewport, this.theme);
@@ -67,49 +72,18 @@ export class TxtEngine implements BookEngine {
   private render(): void {
     // 按 DOM 构建正文 + 高亮包裹（选区偏移用纯文本行走计算，不受 span 影响）
     this.content.innerHTML = buildHtml(this.text, [...this.annotations.values()]);
-    this.relayout(false);
-  }
-
-  private relayout(keepRatio: boolean): void {
-    const vw = this.viewport.clientWidth;
-    const vh = this.viewport.clientHeight;
-    if (!vw || !vh) return;
-    const gap = Math.round(vw * 0.06);
-    const s = this.content.style;
-    s.height = `${vh}px`;
-    s.columnWidth = `${vw}px`;
-    s.columnGap = `${gap}px`;
-    s.columnFill = 'auto';
-    s.position = 'relative';
-    s.transition = 'none';
-    s.willChange = 'transform';
-
-    const raw = this.content.scrollWidth;
-    this.total = Math.max(1, Math.round(raw / (vw + gap)));
-    if (keepRatio) {
-      this.page = Math.min(this.total - 1, this.page);
-    }
-    this.goToPage(this.page, false);
-  }
-
-  private goToPage(p: number, notify = true): void {
-    this.page = Math.max(0, Math.min(this.total - 1, p));
-    const vw = this.viewport.clientWidth;
-    const gap = Math.round(vw * 0.06);
-    this.content.style.transform = `translateX(${-this.page * (vw + gap)}px)`;
-    if (notify) this.notifyChanged();
+    this.pager.relayout('keep-page');
   }
 
   private notifyChanged(): void {
-    const percent = this.total <= 1 ? 0 : this.page / (this.total - 1);
+    const percent = this.pager.ratio;
     const start = Math.floor(this.text.length * percent);
-    this.chapterTitle = chapterAt(this.toc, start);
     const payload: PageChangePayload = {
       percent,
       start,
-      chapter: this.chapterTitle,
-      index: this.page,
-      total: this.total,
+      chapter: chapterAt(this.toc, start),
+      index: this.pager.index,
+      total: this.pager.pages,
     };
     emit(DartEvent.onPageChanged, payload);
     emit(DartEvent.onNeedRefresh, { type: 'full' }); // TS 渲染完成 → 请求全刷
@@ -119,19 +93,18 @@ export class TxtEngine implements BookEngine {
     this.theme = t;
     applyTheme(this.viewport, t);
     // 字号/行距变化 → 重排并按比例回位
-    const ratio = this.total <= 1 ? 0 : this.page / (this.total - 1);
+    const ratio = this.pager.ratio;
     this.render();
-    this.goToPage(Math.round(ratio * (this.total - 1)), false);
+    this.pager.goToRatio(ratio, false);
     this.notifyChanged();
   }
 
   goToPercent(p: number): void {
-    if (this.total <= 1) return;
-    this.goToPage(Math.round(p * (this.total - 1)));
+    this.pager.goToRatio(p);
   }
 
   goToOffset(start: number): void {
-    // 定位：按偏移估算页码后二分校正（简化：直接按比例 + 章节对齐由 Dart 侧处理）
+    // 定位：按字符偏移估算页码（章节级精确，页内为比例近似，够用）
     const ratio = this.text.length ? start / this.text.length : 0;
     this.goToPercent(ratio);
   }
@@ -143,34 +116,27 @@ export class TxtEngine implements BookEngine {
   }
 
   next(): void {
-    if (this.page < this.total - 1) this.goToPage(this.page + 1);
+    this.pager.next();
   }
 
   prev(): void {
-    if (this.page > 0) this.goToPage(this.page - 1);
+    this.pager.prev();
   }
 
   addAnnotation(a: HighlightRecord): void {
     this.annotations.set(a.id, a);
     this.render();
-    this.goToPage(this.page, false);
     emit(DartEvent.onNeedRefresh, { type: 'partial' });
   }
 
   removeAnnotation(id: string): void {
     this.annotations.delete(id);
     this.render();
-    this.goToPage(this.page, false);
     emit(DartEvent.onNeedRefresh, { type: 'partial' });
   }
 
   exportAnnotations(): HighlightRecord[] {
     return [...this.annotations.values()];
-  }
-
-  /** 手势层取当前正文根 */
-  get contentRoot(): HTMLElement {
-    return this.content;
   }
 
   /** Selection → 字符偏移（按文本节点行走累计） */
@@ -187,6 +153,7 @@ export class TxtEngine implements BookEngine {
   }
 
   destroy(): void {
+    this.pager.destroy();
     this.content.remove();
     this.viewport.remove();
   }
@@ -255,25 +222,4 @@ export function buildHtml(text: string, annos: HighlightRecord[]): string {
     .join('');
 }
 
-function offsetOf(root: Node, node: Node, offset: number): number | null {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let total = 0;
-  let n: Node | null;
-  while ((n = walker.nextNode())) {
-    if (n === node) return total + offset;
-    total += (n.textContent ?? '').length;
-  }
-  return null;
-}
 
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/"/g, '&quot;');
-}
-
-function clampColor(c: number): number {
-  return Math.max(1, Math.min(5, Math.round(c) || 2));
-}

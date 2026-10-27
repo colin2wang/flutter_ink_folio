@@ -3,6 +3,10 @@ import {
   DartEvent,
 } from './types';
 
+// 事件名常量对外再导出：gesture / loader / txt_engine 统一从 bridge 单点取用，
+// 避免各处再从 types 二次 import（types 只描述协议，不负责分发）。
+export { DartEvent };
+
 declare global {
   interface Window {
     /** flutter_inappwebview 注入的原生桥（Android/iOS/web 实现均有） */

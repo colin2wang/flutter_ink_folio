@@ -18,7 +18,7 @@
 ```
 L1 Flutter 壳层(Dart)   书架 / 设置 / 笔记 / 阅读页容器
 L2 桥接层               MethodChannel(EPD) + JS Handler(统一 JSON 信封)
-L3 WebView 阅读引擎(TS)  foliate-js 解析 / 分页 / 主题 / 手势 / 高亮
+L3 WebView 阅读引擎(TS)  自研 EPUB/TXT 引擎：解析 / 分页 / 主题 / 手势 / 高亮
 L4 Android 原生(Kotlin)  EpdRefreshPlugin（Boox/海信/墨案 反射适配）
 L5 数据层               sqflite 书库 + 沙盒文件 + shared_preferences
 ```
@@ -29,9 +29,9 @@ L5 数据层               sqflite 书库 + 沙盒文件 + shared_preferences
 
 - **墨水屏优先**：全黑白灰主题、零时长页面转场，无动画/发光/渐变/阴影——从设计层面规避残影。
 - **全刷/局刷控制**：真机翻页触发全刷；支持「每 N 页一次全刷」设置，适配对闪屏敏感的机型。
-- **TXT 与 EPUB**：仓库内置免构建 TXT 回退引擎，一条脚本即可启用完整 foliate-js EPUB 引擎。
+- **TXT 与 EPUB**：仓库内置免构建 TXT 回退引擎，一条脚本即可构建完整的自研 EPUB 引擎（运行时依赖仅 npm 官方 jszip）。
 - **划线笔记**：长按选区 → 划线/笔记，高亮持久化、重启恢复；全局笔记列表。
-- **进度恢复**：TXT 按字符偏移 + 百分比双轨存储；EPUB 按 CFI 精确恢复。
+- **进度恢复**：TXT 与 EPUB 统一按全局字符偏移 + 百分比双轨存储（不再使用 CFI）。
 - **内置字体**：思源宋体/黑体投放 `assets/fonts/`，`FontManager` 首次启动拷贝到沙盒并以 `@font-face` 注入引擎。
 - **SAF 导书**：免存储权限。
 
@@ -55,7 +55,7 @@ flutter run -d chrome          # Chrome 联调（仅壳层+TXT，见「平台差
 
 书架已预置 8 章示例书《墨屏阅读 · 示例书》，可立即验证翻页 / 目录 / 进度恢复 / 划线 / 主题切换全链路。
 
-### 2. 启用 EPUB 引擎（foliate-js）
+### 2. 启用 EPUB 引擎（构建 TS 引擎产物）
 
 ```bash
 # Windows
@@ -100,7 +100,7 @@ flutter build apk --release
 │   ├── data/                       # models / sqflite / 双平台仓库
 │   ├── services/                   # 导书 / 字体管理 / web 资产拷贝
 │   ├── core/ 与 theme/             # 公共辅助 + 灰阶主题与 Duration.zero 路由
-├── web_engine/                     # L3：TS 阅读引擎（Vite + foliate-js）
+├── web_engine/                     # L3：TS 阅读引擎（Vite + jszip）
 ├── build_web.sh / build_web.ps1    # 构建引擎产物到 assets/web/
 └── pubspec.yaml
 ```
@@ -142,7 +142,7 @@ Dart→TS：`window.__reader.dispatch(msg)`；TS→Dart：`callHandler('event', 
 ## 平台差异与已知边界
 
 1. **web（chrome）**：使用 `flutter_inappwebview` v6 的 web 实现（iframe）。TXT 引擎可用（内容直传 payload）；EPUB 引擎在 web 上不可用（file:// 不可达）。sqflite 在 web 不可用：`Repositories` 工厂自动切换 SharedPreferences + 内存实现。
-2. **EPUB 引擎**：foliate-js 无官方 TS 类型，`loader.ts` 对关键调用做了 try/catch 隔离，引擎异常不会拖垮壳层，错误经 `onError` 事件上浮日志。
+2. **EPUB 引擎**：自研实现（JSZip 读 zip + 浏览器原生 DOMParser 解析 OPF/NCX/NAV），无第三方黑盒引擎；关键调用包了 try/catch，引擎异常不会拖垮壳层，错误经 `onError` 事件上浮日志。
 3. **未随包交付的二进制**：`gradle-wrapper.jar`（`flutter create .` 补齐）、字体文件（自行投放 `assets/fonts/`）、厂商 EPD AAR（按需）。
 
 ## 开发验证

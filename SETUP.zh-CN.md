@@ -7,7 +7,7 @@
 ```
 L1 Flutter 壳层(Dart)   书架 / 设置 / 笔记 / 阅读页容器
 L2 桥接层               MethodChannel(EPD) + JS Handler(统一 JSON 信封)
-L3 WebView 阅读引擎(TS)  foliate-js 解析 / 分页 / 主题 / 手势 / 高亮
+L3 WebView 阅读引擎(TS)  自研 EPUB/TXT 引擎：解析 / 分页 / 主题 / 手势 / 高亮
 L4 Android 原生(Kotlin)  EpdRefreshPlugin（Boox/海信/墨案 反射适配）
 L5 数据层               sqflite 书库 + 沙盒文件 + shared_preferences
 ```
@@ -33,7 +33,7 @@ flutter run -d chrome            # Chrome 联调（仅壳层+TXT，见 §四）
 书架里已预置示例书《墨屏阅读 · 示例书》（含 8 个章节），可立即验证
 翻页 / 目录 / 进度恢复 / 划线 / 主题切换 全链路。
 
-### 2. 启用 EPUB 引擎（foliate-js，正式引擎）
+### 2. 启用 EPUB 引擎（构建 TS 引擎产物）
 
 ```bash
 # Linux/macOS
@@ -79,7 +79,7 @@ ebook_reader/
 │   ├── data/                       # models / sqflite / 双平台仓库
 │   ├── services/                   # 导书 / 字体管理 / web资产拷贝
 │   └── theme/                      # 灰阶主题 + PageRouteBuilder(Duration.zero)
-├── web_engine/                     # L3：TS 工程（Vite + foliate-js）
+├── web_engine/                     # L3：TS 工程（Vite + jszip）
 ├── build_web.sh / build_web.ps1
 └── pubspec.yaml
 ```
@@ -94,8 +94,8 @@ Dart→TS：`window.__reader.dispatch(msg)`；TS→Dart：`callHandler('event', 
 | ↓ | openBook | `{bookId, kind, filePath, text?, cfi?, start?, highlights?}` | 打书；txt 可直传内容（web 平台必须） |
 | ↓ | applyTheme | `{mode, fontSize, lineHeight, fontFamily, fontPath?}` | 实时改主题/字体 |
 | ↓ | scrollToPercent | `{percent}` | 按百分比跳转 |
-| ↓ | scrollToOffset | `{start}` | txt 字符偏移（目录跳转） |
-| ↓ | scrollToCfi | `{cfi}` | epub CFI（foliate 引擎） |
+| ↓ | scrollToOffset | `{start}` | 全局字符偏移（TXT/EPUB 目录与划线跳转） |
+| ↓ | scrollToCfi | `{cfi}` | EPUB 定位串 `<spineIndex>#<anchor>`（目录与内链跳转） |
 | ↓ | nextPage / prevPage | `{}` | 翻页 |
 | ↓ | addAnnotation | `{id, start?, end?, cfiRange?, color}` | 渲染高亮 |
 | ↓ | removeAnnotation | `{id}` | 移除高亮 |
@@ -142,7 +142,7 @@ Dart→TS：`window.__reader.dispatch(msg)`；TS→Dart：`callHandler('event', 
    - TXT 引擎可用（内容直传 payload）；EPUB 引擎在 web 上不可用（file:// 不可达）。
    - sqflite 在 web 不可用：`Repositories` 工厂自动切换 SharedPreferences+内存实现。
    - 联调入口：`flutter run -d chrome`。
-2. **EPUB 引擎**：foliate-js 无官方 TS 类型，`loader.ts` 对关键调用做了 try/catch
+2. **EPUB 引擎**：自研实现（JSZip 读 zip + 原生 DOMParser 解析 OPF/NCX/NAV），无第三方黑盒；关键调用包了 try/catch
    隔离，引擎异常不会拖垮壳层，错误经 `onError` 事件上浮日志。
 3. **TXT 进度**：按字符偏移+百分比双轨存储，重排后按百分比近似恢复（误差 ≤1 页）。
 4. **未随包交付的二进制**：gradle-wrapper.jar（`flutter create .` 补齐）、
@@ -153,7 +153,7 @@ Dart→TS：`window.__reader.dispatch(msg)`；TS→Dart：`callHandler('event', 
 
 - [ ] 书架：预置示例书出现、导入 TXT/EPUB、长按删除
 - [ ] 阅读：翻页无动画硬切、点中央呼出/收起菜单（各触发一次刷新）
-- [ ] 目录：TXT 章节识别跳转；EPUB 目录（foliate）
+- [ ] 目录：TXT 章节识别跳转；EPUB 目录（NAV / NCX）
 - [ ] 划线：选区 → 划线/笔记 → 高亮渲染 → 重启恢复
 - [ ] 设置：字号/行距/三档灰阶主题/字体即时生效
 - [ ] 进度：退出重进精确恢复（TXT 百分比、EPUB CFI）

@@ -48,6 +48,8 @@ export interface OpenBookPayload {
   text?: string; // txt 直传内容（web 平台文件不可达）
   cfi?: string;
   start?: number;
+  /** Dart 侧实际下发的进度字段名（reader_controller.openBookInEngine 用 startOffset） */
+  startOffset?: number;
   highlights?: HighlightRecord[];
 }
 
@@ -62,6 +64,7 @@ export interface HighlightRecord {
 export interface TocEntry {
   title: string;
   offset?: number;
+  /** 目录定位串：txt 为字符偏移，epub 为 `<spineIndex>` 或 `<spineIndex>#<anchorId>` */
   cfi?: string;
 }
 
@@ -74,8 +77,13 @@ export interface PageChangePayload {
   total?: number;
 }
 
-/** 引擎抽象：foliate 引擎与 txt 引擎共同实现 */
+/** 引擎抽象：epub 引擎与 txt 引擎共同实现 */
 export interface BookEngine {
+  /** 正文根元素：手势层判定选区归属、主题注入的作用点 */
+  readonly contentRoot: HTMLElement;
+  /** Selection → 全局字符偏移（两种引擎语义一致，高亮与进度共用） */
+  resolveSelection(sel: Selection): { start: number; end: number } | null;
+
   open(payload: OpenBookPayload): Promise<void>;
   applyTheme(t: ThemePayload): void;
   goToPercent(p: number): void;

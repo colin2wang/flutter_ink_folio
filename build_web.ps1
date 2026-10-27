@@ -1,18 +1,45 @@
-# 构建 web_engine 并同步产物到 Flutter assets（Windows）
+# Build web_engine and sync the bundle into the Flutter assets (Windows).
+#
+# Note: this file is intentionally ASCII-only. PowerShell 5.1 decodes BOM-less
+# .ps1 files as GBK, which mangles any non-ASCII text (see AGENTS.md).
 $ErrorActionPreference = "Stop"
-Set-Location (Join-Path $PSScriptRoot "web_engine")
 
-if (Get-Command pnpm -ErrorAction SilentlyContinue) {
-  pnpm install
-  pnpm build
-} else {
-  npm install
-  npx vite build
+$engine   = Join-Path $PSScriptRoot "web_engine"
+$dest     = Join-Path $PSScriptRoot "assets\web"
+$exitCode = 0
+
+Push-Location $engine
+try {
+  if (Get-Command pnpm -ErrorAction SilentlyContinue) {
+    pnpm install
+    pnpm build
+  } else {
+    npm install
+    npx vite build
+  }
+
+  # Native commands do not honour $ErrorActionPreference: check the exit code explicitly,
+  # otherwise a tsc failure falls through to the copy step with a misleading "path not found".
+  if ($LASTEXITCODE -ne 0) {
+    $exitCode = $LASTEXITCODE
+  } else {
+    if (-not (Test-Path $dest)) { New-Item $dest -ItemType Directory | Out-Null }
+
+    # Keep README.md: it documents the INLINE_MAIN_JS contract that reader_page.dart relies on.
+    # Everything else is build output and gets fully replaced.
+    Get-ChildItem $dest -Exclude README.md | Remove-Item -Recurse -Force
+    Copy-Item -Path "dist\*" -Destination $dest -Recurse -Force
+  }
+}
+finally {
+  # Always restore: the script must not leave the caller sitting in web_engine/.
+  Pop-Location
 }
 
-$dest = Join-Path $PSScriptRoot "assets\web"
-if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
-New-Item $dest -ItemType Directory | Out-Null
-Copy-Item -Path "dist\*" -Destination $dest -Recurse -Force
-Write-Host "web_engine 产物已同步到 assets/web/"
-Write-Host "下一步：flutter pub get && flutter build apk"
+if ($exitCode -ne 0) {
+  Write-Host "web_engine build failed (exit $exitCode); assets/web/ left untouched." -ForegroundColor Red
+  exit $exitCode
+}
+
+Write-Host "web_engine bundle synced to assets/web/" -ForegroundColor Green
+Write-Host "next: flutter pub get && flutter build apk"

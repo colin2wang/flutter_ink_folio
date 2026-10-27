@@ -21,7 +21,7 @@ abstract final class TsAction {
   static const applyTheme = 'applyTheme'; // {mode,fontSize,lineHeight,fontFamily,fontPath}
   static const scrollToPercent = 'scrollToPercent'; // {percent 0..1}
   static const scrollToOffset = 'scrollToOffset'; // {start} txt 字符偏移（回退引擎目录用）
-  static const scrollToCfi = 'scrollToCfi'; // {cfi} epub CFI（foliate 引擎用）
+  static const scrollToCfi = 'scrollToCfi'; // {cfi} epub 定位串（<spineIndex>#<anchor>）
   static const nextPage = 'nextPage';
   static const prevPage = 'prevPage';
   static const addAnnotation = 'addAnnotation'; // {id,kind,start?,end?,cfiRange?,color}

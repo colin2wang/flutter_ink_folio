@@ -23,7 +23,7 @@ class Book {
   final int addedAt; // epoch ms
   int? lastReadAt; // epoch ms
   double percent; // 0..1
-  String? cfi; // epub 进度（foliate CFI）
+  String? cfi; // epub 进度定位串（<spineIndex>#<anchor>）
   int startOffset; // txt 进度（字符偏移）
   int chapterIndex;
   int colorIndex; // 书架占位封面灰阶索引（1..5）

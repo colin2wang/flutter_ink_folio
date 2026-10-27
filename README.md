@@ -18,7 +18,7 @@
 ```
 L1  Flutter Shell (Dart)      Bookshelf / Settings / Notes / Reader container
 L2  Bridge Layer              MethodChannel (EPD) + JS Handlers (unified JSON envelope)
-L3  WebView Engine (TS)       foliate-js parsing / pagination / themes / gestures / highlights
+L3  WebView Engine (TS)       in-house EPUB/TXT engine: parsing / pagination / themes / gestures / highlights
 L4  Android Native (Kotlin)   EpdRefreshPlugin (Boox / Hisense / Moaan reflection adapters)
 L5  Data Layer                sqflite library + sandbox files + shared_preferences
 ```
@@ -29,9 +29,9 @@ L5  Data Layer                sqflite library + sandbox files + shared_preferenc
 
 - **E-ink first**: grayscale-only theme, zero-duration page transitions, no animations, glows, gradients or shadows — ghosting avoided by design.
 - **Full/partial EPD refresh**: page turns trigger a full refresh on real e-ink hardware; configurable "full refresh every N pages" for flicker-sensitive devices.
-- **TXT & EPUB**: a build-free fallback TXT engine ships in the repo; run one script to enable the full foliate-js EPUB engine.
+- **TXT & EPUB**: a build-free fallback TXT engine ships in the repo; run one script to build the full in-house EPUB engine (runtime dependency: npm jszip only).
 - **Annotations**: long-press selection → highlight/note, persisted and restored across restarts; global notes list.
-- **Reading progress**: TXT restored via character offset + percentage; EPUB via CFI.
+- **Reading progress**: TXT and EPUB share one model — global character offset + percentage (no CFI).
 - **Built-in fonts**: drop Source Han Serif/Sans into `assets/fonts/` — `FontManager` copies them to the sandbox and exposes them to the engine via `@font-face`.
 - **SAF book import**: no storage permissions required.
 
@@ -55,7 +55,7 @@ flutter run -d chrome             # Chrome debugging (shell + TXT only, see Plat
 
 A sample book with 8 chapters is preloaded on the shelf to verify pagination, TOC, progress restore, highlights and theme switching end to end.
 
-### 2. Enable the EPUB engine (foliate-js)
+### 2. Enable the EPUB engine (build the TS bundle)
 
 ```bash
 # Windows
@@ -98,7 +98,7 @@ flutter build apk --release
 │   ├── data/                       # models / sqflite / dual-platform repositories
 │   ├── services/                   # book import / font manager / web asset copying
 │   ├── core/ & theme/              # shared helpers + grayscale theme & zero-duration routes
-├── web_engine/                     # L3: TypeScript engine (Vite + foliate-js)
+├── web_engine/                     # L3: TypeScript engine (Vite + jszip)
 ├── build_web.sh / build_web.ps1    # build the engine into assets/web/
 └── pubspec.yaml
 ```
@@ -139,7 +139,7 @@ If you obtain an official vendor AAR SDK, replace the reflection branch in `reso
 ## Platform Notes
 
 1. **Web (Chrome)**: uses the `flutter_inappwebview` v6 web implementation (iframe). The TXT engine works (content passed inline); the EPUB engine does not (file:// unreachable). sqflite is unavailable on web — the `Repositories` factory automatically switches to SharedPreferences + in-memory implementations.
-2. **EPUB engine**: foliate-js ships no official TS types; `loader.ts` wraps key calls in try/catch so engine failures never take down the shell — errors surface through the `onError` event.
+2. **EPUB engine**: in-house implementation (JSZip for zip + native DOMParser for OPF/NCX/NAV) — no third-party black box; key calls are wrapped in try/catch so engine failures never take down the shell — errors surface through the `onError` event.
 3. **Binaries not in the repo**: `gradle-wrapper.jar` (regenerate with `flutter create .`), font files (drop into `assets/fonts/`), vendor EPD AARs (as needed).
 
 ## Development

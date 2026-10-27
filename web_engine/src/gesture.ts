@@ -3,7 +3,7 @@ import { DartEvent, emit } from './bridge';
 export interface GestureHooks {
   prev(): void;
   next(): void;
-  /** 返回选区的 {start,end}（txt 偏移）或 {cfiRange}（foliate），null 表示无法定位 */
+  /** 返回选区的 {start,end}（全局字符偏移），null 表示无法定位 */
   resolveSelection(sel: Selection): { start?: number; end?: number; cfiRange?: string } | null;
   getContentRoot(): HTMLElement | null;
 }

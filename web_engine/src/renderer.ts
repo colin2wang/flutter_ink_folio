@@ -11,6 +11,28 @@ export function applyTheme(root: HTMLElement, t: ThemePayload, docs: Document[] 
   root.style.background = bgOf(t.mode);
 }
 
+/**
+ * 写入主题样式：同一文档内复用固定 id 的 <style>。
+ * - 复用而非追加：换章/重排会反复调用，逐次 append 会让样式表无限膨胀
+ * - 内容相同则跳过：减少无谓重排（墨水屏下每次重排都要全刷）
+ * - 不走 instanceof HTMLStyleElement：docs 可能来自 iframe（跨 realm 判定失效）
+ */
+function inject(doc: Document, css: string): void {
+  const host: Element | null = doc.head ?? doc.documentElement;
+  if (!host) return;
+
+  // XHTML 文档（EPUB 章节常见）的 tagName 保留原始大小写，统一转小写比较
+  const existing = doc.getElementById(STYLE_ID);
+  const isStyle = existing?.tagName?.toLowerCase() === 'style';
+  let style = existing && isStyle ? (existing as HTMLStyleElement) : null;
+  if (!style) {
+    style = doc.createElement('style');
+    style.id = STYLE_ID;
+    host.appendChild(style);
+  }
+  if (style.textContent !== css) style.textContent = css;
+}
+
 function bgOf(mode: ThemePayload['mode']): string {
   return mode === 'night' ? '#111111' : mode === 'gray' ? '#ECECEC' : '#FFFFFF';
 }
@@ -53,6 +75,15 @@ function buildCss(t: ThemePayload): string {
       hyphens: none;
     }
     .ink-book img { max-width: 100% !important; height: auto !important; }
+    /* EPUB 排版兜底：多栏分页下浮动/绝对定位会破坏分栏，图文块需避免跨栏断裂 */
+    .ink-epub * { float: none !important; position: static !important; }
+    .ink-epub img, .ink-epub svg, .ink-epub figure, .ink-epub table {
+      max-width: 100% !important;
+      height: auto !important;
+      break-inside: avoid;
+    }
+    .ink-epub h1, .ink-epub h2, .ink-epub h3, .ink-epub h4 { break-after: avoid; }
+    .ink-epub p { text-align: justify; }
     .ink-hl { background: currentColor; opacity: 0.28; border-radius: 1px; }
     .ink-hl-1 { opacity: 0.18; }
     .ink-hl-5 { opacity: 0.4; }`;

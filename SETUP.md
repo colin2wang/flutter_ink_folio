@@ -7,7 +7,7 @@ The e-ink reader implemented as a five-layer architecture, targeting Android onl
 ```
 L1  Flutter Shell (Dart)      Bookshelf / Settings / Notes / Reader container
 L2  Bridge Layer              MethodChannel (EPD) + JS Handlers (unified JSON envelope)
-L3  WebView Engine (TS)       foliate-js parsing / pagination / themes / gestures / highlights
+L3  WebView Engine (TS)       in-house EPUB/TXT engine: parsing / pagination / themes / gestures / highlights
 L4  Android Native (Kotlin)   EpdRefreshPlugin (Boox / Hisense / Moaan reflection adapters)
 L5  Data Layer                sqflite library + sandbox files + shared_preferences
 ```
@@ -33,7 +33,7 @@ flutter run -d chrome             # Chrome debugging (shell + TXT only, see §4)
 A sample book "Ink Folio · Sample Book" with 8 chapters is preloaded on the shelf to verify
 pagination / TOC / progress restore / highlights / theme switching end to end.
 
-### 2. Enable the EPUB engine (foliate-js, the production engine)
+### 2. Enable the EPUB engine (build the TS bundle)
 
 ```bash
 # Linux/macOS
@@ -79,7 +79,7 @@ ebook_reader/
 │   ├── data/                       # models / sqflite / dual-platform repositories
 │   ├── services/                   # book import / font manager / web asset copying
 │   └── theme/                      # grayscale theme + PageRouteBuilder(Duration.zero)
-├── web_engine/                     # L3: TypeScript project (Vite + foliate-js)
+├── web_engine/                     # L3: TypeScript project (Vite + jszip)
 ├── build_web.sh / build_web.ps1
 └── pubspec.yaml
 ```
@@ -94,8 +94,8 @@ Dart→TS: `window.__reader.dispatch(msg)`; TS→Dart: `callHandler('event', msg
 | ↓ | openBook | `{bookId, kind, filePath, text?, cfi?, start?, highlights?}` | open a book; TXT content may be inlined (required on web) |
 | ↓ | applyTheme | `{mode, fontSize, lineHeight, fontFamily, fontPath?}` | live theme/font changes |
 | ↓ | scrollToPercent | `{percent}` | jump by percentage |
-| ↓ | scrollToOffset | `{start}` | TXT character offset (TOC jump) |
-| ↓ | scrollToCfi | `{cfi}` | EPUB CFI (foliate engine) |
+| ↓ | scrollToOffset | `{start}` | global character offset (TXT/EPUB TOC & highlight jump) |
+| ↓ | scrollToCfi | `{cfi}` | EPUB locator `<spineIndex>#<anchor>` (TOC & internal links) |
 | ↓ | nextPage / prevPage | `{}` | page turn |
 | ↓ | addAnnotation | `{id, start?, end?, cfiRange?, color}` | render highlight |
 | ↓ | removeAnnotation | `{id}` | remove highlight |
@@ -142,7 +142,7 @@ If you obtain an official vendor AAR SDK, replace the reflection branch in `reso
    - The TXT engine works (content passed inline in the payload); the EPUB engine does not (file:// unreachable on web).
    - sqflite is unavailable on web: the `Repositories` factory automatically switches to SharedPreferences + in-memory implementations.
    - Debugging entry point: `flutter run -d chrome`.
-2. **EPUB engine**: foliate-js ships no official TS types; `loader.ts` wraps key calls in try/catch
+2. **EPUB engine**: in-house implementation (JSZip for zip + native DOMParser for OPF/NCX/NAV) — no third-party black box; key calls are wrapped in try/catch
    so engine failures never take down the shell — errors surface through the `onError` event.
 3. **TXT progress**: stored on dual tracks (character offset + percentage); after re-layout it is restored
    approximately by percentage (error ≤ 1 page).
@@ -154,7 +154,7 @@ If you obtain an official vendor AAR SDK, replace the reflection branch in `reso
 
 - [ ] Shelf: sample book appears, import TXT/EPUB, long-press to delete
 - [ ] Reading: hard page cuts with no animation, center tap opens/closes the menu (one refresh each)
-- [ ] TOC: TXT chapter detection and jumps; EPUB TOC (foliate)
+- [ ] TOC: TXT chapter detection and jumps; EPUB TOC (NAV / NCX)
 - [ ] Highlights: selection → highlight/note → highlight rendered → restored after restart
 - [ ] Settings: font size / line height / three grayscale themes / fonts take effect instantly
 - [ ] Progress: precise restore after quit and re-enter (TXT percentage, EPUB CFI)
