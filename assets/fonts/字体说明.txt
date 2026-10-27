@@ -1,0 +1,19 @@
+字体目录说明
+============
+
+本目录用于放置内置字体（可选，不放置也能运行，使用系统衬线字体兜底）。
+
+推荐（墨水屏灰度下更清晰）：
+  - 思源宋体  SourceHanSerifSC-Regular.otf   → 对应 fontFamily=serif
+  - 思源黑体  SourceHanSansSC-Regular.otf    → 对应 fontFamily=sans
+
+使用方式：
+  1. 把 .otf/.ttf 文件直接放进本目录（文件名即字体名，如 SourceHanSerifSC-Regular.otf）；
+  2. 重新 flutter run / flutter build apk；
+  3. FontManager 会在启动时把它们拷贝到沙盒 <documents>/fonts/，
+     并以 file:// 路径注入 WebView 的 @font-face（fontPath 通道）。
+
+自定义字体：设置面板选择 custom:<文件名> 亦可生效。
+
+版权提示：思源字体为 SIL OFL 开源协议，可自由随 App 分发；
+分发其他字体请确认其授权允许内嵌。

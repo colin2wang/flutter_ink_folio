@@ -1,0 +1,31 @@
+# ---- Flutter 工具（本地构建与生成状态）----
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# ---- Web 引擎（web_engine/ TS 工程：Vite 依赖与产物）----
+web_engine/node_modules/
+web_engine/dist/
+
+# ---- Android（Gradle 本机状态；签名配置绝不入库）----
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/key.properties
+android/gw_err.txt
+android/gw_out.txt
+
+# ---- AI 编码器本地状态 ----
+.atomcode/
+
+# ---- IDE ----
+.idea/
+*.iml
+
+# ---- 杂项 ----
+*.log
+
+# 提交消息草稿（仅本地）
+COMMIT.md

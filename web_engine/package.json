@@ -1,0 +1,19 @@
+{
+  "name": "inkreader-web-engine",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "墨水屏阅读器 WebView 阅读引擎（foliate-js 解析 + 灰阶渲染 + 桥接）",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "foliate-js": "github:johnfactotum/foliate-js"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}

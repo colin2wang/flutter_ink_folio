@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 简单书本剪影（灰阶） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#EDEDED"
+        android:pathData="M30,26 L50,26 C53,26 54,28 54,28 C54,28 55,26 58,26 L78,26 L78,76 L58,76 C55,76 54,78 54,78 C54,78 53,76 50,76 L30,76 Z M33,29 L49,29 C51,29 52,31 52,32 L52,72 C52,71 50,70 49,70 L33,70 Z M56,32 C56,31 57,29 59,29 L75,29 L75,70 L59,70 C58,70 56,71 56,72 Z" />
+</vector>

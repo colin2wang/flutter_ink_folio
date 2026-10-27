@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>inkreader engine (fallback)</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden; background: transparent;
+      transition: none !important; animation: none !important;
+    }
+    #page-container { position: absolute; inset: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="page-container"></div>
+  <!-- Android：file:// 直接加载本文件 -->
+  <script src="./main.js"></script>
+  <!-- Web(chrome)：Flutter 壳把 main.js 内联到此处（iframe 无 base URL） -->
+  <script>/*INLINE_MAIN_JS*/</script>
+</body>
+</html>
