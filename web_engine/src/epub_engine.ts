@@ -277,9 +277,10 @@ export class EpubEngine implements BookEngine {
     const el = Array.from(this.content.querySelectorAll<HTMLElement>('[id]'))
       .find(n => n.id === id);
     if (!el) return;
-    const vw = this.viewport.clientWidth;
-    const gap = Math.round(vw * 0.06);
-    this.pager.goToPage(Math.floor(el.offsetLeft / (vw + gap)));
+    // 步进必须用 Pager 内部那套（栏宽已扣页边距），现量 clientWidth 会偏
+    const stride = this.pager.stride;
+    if (stride <= 0) return;
+    this.pager.goToPage(Math.floor(el.offsetLeft / stride));
   }
 
   private notifyChanged(): void {

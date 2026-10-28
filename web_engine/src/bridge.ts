@@ -20,8 +20,9 @@ export const INK_DOWN = 'down';
  *
  * **改了 Dart↔TS 的 payload 字段就要同步 +1**（与宿主常量一起改）：
  * 3 = openBook 支持 `dataBase64`（web 端 EPUB 内嵌字节）
+ * 4 = applyTheme 支持 `margin` / `indent` / `paraSpacing`（页边距等排版参数）
  */
-export const ENGINE_PROTOCOL = 3;
+export const ENGINE_PROTOCOL = 4;
 
 declare global {
   interface Window {

@@ -16,6 +16,9 @@ void main() async {
   appLog('启动 ${kIsWeb ? 'web' : defaultTargetPlatform.name}'
       '（${kReleaseMode ? 'release' : kProfileMode ? 'profile' : 'debug'}）'
       ' · 引擎协议 $engineProtocolVersion');
+  // 日志落盘：黑屏/卡死时进程会被杀，内存缓冲一起消失，
+  // 只有文件里的「上一次会话」还能取证（书架顶栏 → 运行日志 → 复制磁盘日志）
+  await AppLog.instance.attachFile();
   // 墨水屏：保持竖屏、禁用系统 UI 自动 hide 动画（瞬时切换由 App 内处理）
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

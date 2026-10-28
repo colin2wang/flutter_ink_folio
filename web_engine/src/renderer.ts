@@ -41,6 +41,15 @@ function buildCss(t: ThemePayload): string {
   const [bg, fg] = fgBg(t.mode);
   const family = fontCss(t);
   const face = t.fontPath ? fontFaceCss(t.fontPath) : '';
+  // 页边距：左右 = margin，上下取 0.6 倍（竖排方向可用高度更珍贵）。
+  // 写成视口的 padding，由 Pager 从视口尺寸里扣掉（见 pager.paddingOf）——
+  // 直接给内容加 padding 会把栏宽算错，正文照样压在边距上。
+  const margin = Math.max(0, Math.round(t.margin ?? 0));
+  const marginV = Math.round(margin * 0.6);
+  const indent = Math.max(0, t.indent ?? 0);
+  // 段间距：undefined = 不生成规则，保留 EPUB 原文的段落间距
+  const paraSpacing = t.paraSpacing;
+  const paraCss = paraSpacing == null ? '' : `\n    .ink-book p { margin: ${paraSpacing}em 0; }`;
   return `${face}
     html, body {
       background: ${bg} !important;
@@ -51,6 +60,8 @@ function buildCss(t: ThemePayload): string {
       position: absolute;
       inset: 0;
       overflow: hidden;
+      box-sizing: border-box;
+      padding: ${marginV}px ${margin}px;
     }
     .ink-book, .ink-book * {
       background: transparent !important;
@@ -74,6 +85,14 @@ function buildCss(t: ThemePayload): string {
       -webkit-hyphens: none;
       hyphens: none;
     }
+    .ink-book p { text-indent: ${indent}em; }
+    /* 原文自己就用空格缩进的段落（TXT 常见）：不再叠加 text-indent，
+       否则一开头就是四个字的空白（标记见 txt_engine.buildHtml） */
+    .ink-book p.ink-noindent { text-indent: 0; }
+    /* 居中段落（标题/版权页常见）不缩进，否则字会往右偏一截 */
+    .ink-book p[align="center"],
+    .ink-book p[style*="text-align:center"],
+    .ink-book p[style*="text-align: center"] { text-indent: 0; }${paraCss}
     .ink-book img { max-width: 100% !important; height: auto !important; }
     /* EPUB 排版兜底：多栏分页下浮动/绝对定位会破坏分栏，图文块需避免跨栏断裂 */
     .ink-epub * { float: none !important; position: static !important; }

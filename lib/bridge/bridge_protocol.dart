@@ -3,7 +3,8 @@
 /// **改动 Dart↔TS 的 payload 字段就要两边一起 +1**。web 宿主在 onReady 时比对，
 /// 不一致就提示「产物过旧」——否则漏跑 `build_web.ps1` 时一切静默失败。
 /// 3 = openBook 支持 `dataBase64`（web 端 EPUB 内嵌字节）
-const int engineProtocolVersion = 3;
+/// 4 = applyTheme 支持 `margin` / `indent` / `paraSpacing`（页边距等排版参数）
+const int engineProtocolVersion = 4;
 
 /// 统一 JSON 信封协议（Dart ↔ TS）。
 /// Dart→TS 走 evaluateJavascript 调 window.__reader.dispatch(msg)
@@ -25,7 +26,7 @@ class BridgeMessage {
 /// Dart → TS 的 action
 abstract final class TsAction {
   static const openBook = 'openBook'; // {bookId,kind,filePath,text?,cfi?,highlights?}
-  static const applyTheme = 'applyTheme'; // {mode,fontSize,lineHeight,fontFamily,fontPath}
+  static const applyTheme = 'applyTheme'; // {mode,fontSize,lineHeight,fontFamily,fontPath,margin,indent,paraSpacing}
   static const scrollToPercent = 'scrollToPercent'; // {percent 0..1}
   static const scrollToOffset = 'scrollToOffset'; // {start} txt 字符偏移（回退引擎目录用）
   static const scrollToCfi = 'scrollToCfi'; // {cfi} epub 定位串（<spineIndex>#<anchor>）

@@ -39,6 +39,12 @@ export interface ThemePayload {
   lineHeight: number;
   fontFamily: string;
   fontPath?: string;
+  /** 页边距（px）：左右取原值，上下取 0.6 倍。缺省 0（正文贴边） */
+  margin?: number;
+  /** 首行缩进（em）：0 = 不缩进 */
+  indent?: number;
+  /** 段间距（em）：缺省表示不覆盖原文（EPUB 自带样式说了算） */
+  paraSpacing?: number;
 }
 
 export interface OpenBookPayload {

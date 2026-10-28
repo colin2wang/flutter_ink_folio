@@ -26,8 +26,15 @@ class ReaderController extends ChangeNotifier {
   final SettingsController _settingsCtrl;
 
   void _onSettingsChanged() {
+    // 只有排版相关字段变了才推引擎：底部进度开关、全刷节拍这类设置
+    // 改了会重新分栏 + 全刷一次，而画面上什么都没变（墨水屏上很显眼）
+    final key = jsonEncode(settings.toBridgeJson());
+    if (key == _lastThemeKey) return;
     applyThemeToEngine();
   }
+
+  /// 上一次下发给引擎的排版参数（用于过滤与排版无关的设置变更）
+  String? _lastThemeKey;
 
   Book? book;
   List<Annotation> annotations = [];
@@ -114,8 +121,13 @@ class ReaderController extends ChangeNotifier {
   }
 
   void applyThemeToEngine() {
-    _post?.call(TsAction.applyTheme, settings.toBridgeJson());
+    final payload = settings.toBridgeJson();
+    _lastThemeKey = jsonEncode(payload);
+    _post?.call(TsAction.applyTheme, payload);
   }
+
+  /// 设置对话框里改的是草稿副本，交互结束时整体写回并下发排版
+  Future<void> applySettings(ReaderSettings s) => _settingsCtrl.apply(s);
 
   void jumpToPercent(double percent) {
     _post?.call(TsAction.scrollToPercent, {'percent': percent.clamp(0, 1)});

@@ -10,6 +10,17 @@
         android:allowBackup="true"
         android:hardwareAccelerated="true">
 
+        <!-- 渲染后端：关掉 Impeller（Vulkan），改用 Skia。
+             BOOX Note X3 Pro（Android 12）实测：从系统文件选择器选完 EPUB 回来的
+             那一刻，Impeller 的 surface 重建失败，整屏黑且熄屏唤醒也不恢复，
+             只能杀进程（同类报告：flutter/flutter#155973 "No surface available"）。
+             墨水屏本来就没有动画，Skia 的兼容性收益远大于 Impeller 的性能收益。
+             若以后确认稳定，想回到 Impeller 只需删掉这一项；也可只换后端：
+             io.flutter.embedding.android.ImpellerBackend = "opengl"。 -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

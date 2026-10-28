@@ -27,6 +27,9 @@ export class TxtEngine implements BookEngine {
   private annotations = new Map<string, HighlightRecord>();
   private theme: ThemePayload = {
     mode: 'paper', fontSize: 19, lineHeight: 1.7, fontFamily: 'serif',
+    // 与 Dart 侧 ReaderSettings 的默认值一致：首次排版就带页边距与首行缩进，
+    // 否则 open() 先贴边排一遍、随 applyTheme 再重排一次（多一轮闪屏）
+    margin: 32, indent: 2,
   };
 
   constructor(surface: HTMLElement) {
@@ -218,10 +221,16 @@ export function buildHtml(text: string, annos: HighlightRecord[]): string {
     pos = m.at;
   }
   html += escapeHtml(text.slice(pos));
-  // 段落化：空行分段，保留简单换行
+  // 段落化：空行分段，保留简单换行。
+  // 首字就是空格的段落打上 ink-noindent：原文已用全角空格缩进，
+  // 再叠 text-indent 会变成四个字的空白。
+  // 注意不能删这些空格——删了 DOM 文本就和 raw text 对不上，划线偏移会错位。
   return html
     .split(/\n{2,}/)
-    .map(seg => `<p>${seg.replace(/\n/g, '<br>')}</p>`)
+    .map(seg => {
+      const cls = /^[ \t\u3000]/.test(seg) ? ' class="ink-noindent"' : '';
+      return `<p${cls}>${seg.replace(/\n/g, '<br>')}</p>`;
+    })
     .join('');
 }
 

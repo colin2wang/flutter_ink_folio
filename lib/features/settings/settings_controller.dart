@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../bridge/bridge_protocol.dart';
 import '../../data/models/reader_settings.dart';
 import '../../services/font_manager.dart';
 
@@ -35,8 +34,18 @@ class SettingsController extends ChangeNotifier {
 
   Future<void> update(void Function(ReaderSettings s) mutate) async {
     mutate(_settings);
-    await (await SharedPreferences.getInstance())
-        .setString(_kKey, jsonEncode(_settings.toPrefsJson()));
+    await _persist();
     notifyListeners();
   }
+
+  /// 整体替换：设置对话框里改的是一份草稿副本，交互结束（滑块松手/选芯片）
+  /// 才整体写回——拖动过程中不重排，否则墨水屏会被刷花
+  Future<void> apply(ReaderSettings s) async {
+    _settings = s;
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> _persist() async => (await SharedPreferences.getInstance())
+      .setString(_kKey, jsonEncode(_settings.toPrefsJson()));
 }

@@ -36,6 +36,10 @@ export class Pager {
   private lastSize = '';
   /** 是否已经就「视口与窗口不一致」告过警（避免每次 resize 刷屏） */
   private healed = false;
+  /** 当前栏宽（已扣除页边距） */
+  private cw = 0;
+  /** 当前栏间距 */
+  private gap = 0;
 
   constructor(private readonly host: PagerHost) {
     // 用 ResizeObserver 观测视口本身，而不是只靠 window.resize：
@@ -90,6 +94,9 @@ export class Pager {
     const w = `${winW}px`;
     const h = `${winH}px`;
     if (style.width !== w || style.height !== h) {
+      // 页边距写在本元素的 padding 上，必须按 border-box 计宽，
+      // 否则撑出来的尺寸是窗口 + 两侧边距，右侧一列会被切掉
+      style.boxSizing = 'border-box';
       style.width = w;
       style.height = h;
       if (!this.healed) {
@@ -121,6 +128,32 @@ export class Pager {
   }
 
   /**
+   * 页边距：渲染层把边距写成 `.ink-viewport` 的 padding（见 renderer.buildCss）。
+   * 排版必须只发生在 padding box 里：不扣掉这部分，栏宽就按整个窗口算，
+   * 正文照样压在边距上（等于边距没生效）。`clientWidth` 含 padding，
+   * 所以这里读计算样式减掉。
+   */
+  private paddingOf(): { l: number; r: number; t: number; b: number } {
+    const cs = getComputedStyle(this.host.viewport);
+    return {
+      l: parseFloat(cs.paddingLeft) || 0,
+      r: parseFloat(cs.paddingRight) || 0,
+      t: parseFloat(cs.paddingTop) || 0,
+      b: parseFloat(cs.paddingBottom) || 0,
+    };
+  }
+
+  /** 单页步进 = 栏宽 + 栏间距：翻页位移与锚点换算共用 */
+  get stride(): number {
+    return this.cw + this.gap;
+  }
+
+  /** 当前栏宽（已扣页边距）：外部算锚点页码时要用它，不能用 clientWidth */
+  get columnWidth(): number {
+    return this.cw;
+  }
+
+  /**
    * 重新分栏。内容替换或样式变化后必须调用。
    * 读取 scrollWidth 会强制同步布局（reflow），因此调用后页数即为最终值。
    */
@@ -140,18 +173,25 @@ export class Pager {
     const vh = size.h;
     this.lastSize = `${vw}x${vh}`;
 
+    // 扣掉页边距：栏宽/栏高都按 padding box 算（正文只在边距以内排版）
+    const pad = this.paddingOf();
+    const cw = Math.max(80, Math.round(vw - pad.l - pad.r));
+    const ch = Math.max(80, Math.round(vh - pad.t - pad.b));
+    const gap = this.gapOf(cw);
+    this.cw = cw;
+    this.gap = gap;
+
     const prevRatio = this.ratio;
-    const gap = this.gapOf(vw);
     const s = this.host.content.style;
-    s.height = `${vh}px`;
-    s.columnWidth = `${vw}px`;
+    s.height = `${ch}px`;
+    s.columnWidth = `${cw}px`;
     s.columnGap = `${gap}px`;
     s.columnFill = 'auto';
     s.position = 'relative';
     s.transition = 'none';
     s.willChange = 'transform';
 
-    this.total = Math.max(1, Math.round(this.host.content.scrollWidth / (vw + gap)));
+    this.total = Math.max(1, Math.round(this.host.content.scrollWidth / (cw + gap)));
 
     const target =
       mode === 'reset' ? 0
@@ -162,8 +202,10 @@ export class Pager {
 
   goToPage(page: number, notify = true): void {
     this.page = Math.max(0, Math.min(this.total - 1, page));
-    const vw = this.measure()?.w ?? 0;
-    this.host.content.style.transform = `translateX(${-this.page * (vw + this.gapOf(vw))}px)`;
+    // 位移按 relayout 时算好的栏宽+栏间距，不再现量视口（量到的含页边距，会偏）
+    if (this.stride > 0) {
+      this.host.content.style.transform = `translateX(${-this.page * this.stride}px)`;
+    }
     if (notify) this.host.onPageChanged(this.page, this.total);
   }
 

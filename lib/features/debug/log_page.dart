@@ -7,6 +7,8 @@ import '../../core/app_log.dart';
 ///
 /// 入口：书架顶栏的 debug 按钮（见 shelf_page.dart）。
 /// 手机（release APK）出问题时：复现 → 返回书架 → 打开本页 → 复制全部 → 粘贴出去。
+/// 如果出问题后连界面都回不来（整屏黑、只能杀进程）：重开 App 后
+/// 用「复制磁盘日志」把上一次会话整段取出来。
 ///
 /// 墨水屏约束：列表滚动用 jumpTo（不用 animateTo），不引入任何动画。
 class LogPage extends StatefulWidget {
@@ -61,6 +63,23 @@ class _LogPageState extends State<LogPage> {
     );
   }
 
+  /// 复制磁盘日志：含「上一次会话」，黑屏/被杀后重开 App 也能取证
+  Future<void> _copyDisk() async {
+    final text = await _log.diskTail(maxLines: 800);
+    if (!mounted) return;
+    if (text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有磁盘日志（web 或首次启动）')),
+      );
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已复制磁盘日志 ${text.length} 字符（含上次会话）')),
+    );
+  }
+
   Future<void> _confirmClear() async {
     final ok = await showDialog<bool>(
       context: context,
@@ -85,6 +104,11 @@ class _LogPageState extends State<LogPage> {
         title: const Text('运行日志'),
         actions: [
           IconButton(
+            onPressed: _copyDisk,
+            icon: const Icon(Icons.history),
+            tooltip: '复制磁盘日志（含上次会话）',
+          ),
+          IconButton(
             onPressed: entries.isEmpty ? null : _copyAll,
             icon: const Icon(Icons.copy_all_outlined),
             tooltip: '复制全部',
@@ -98,7 +122,7 @@ class _LogPageState extends State<LogPage> {
       ),
       body: Column(
         children: [
-          _Header(count: _log.count, dropped: _log.dropped),
+          _Header(count: _log.count, dropped: _log.dropped, filePath: _log.filePath),
           const Divider(height: 1),
           Expanded(
             child: entries.isEmpty
@@ -120,30 +144,48 @@ class _LogPageState extends State<LogPage> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.count, required this.dropped});
+  const _Header({required this.count, required this.dropped, required this.filePath});
 
   final int count;
   final int dropped;
+  final String filePath;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              '共 $count 条${dropped > 0 ? '（已丢弃最早 $dropped 条）' : ''}',
-              style: TextStyle(
-                  fontSize: 13,
-                  color: theme.colorScheme.onSurface.withOpacity(.7)),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '共 $count 条${dropped > 0 ? '（已丢弃最早 $dropped 条）' : ''}',
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: theme.colorScheme.onSurface.withOpacity(.7)),
+                ),
+              ),
+              Text('复现后点右上角复制',
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface.withOpacity(.45))),
+            ],
           ),
-          Text('复现后点右上角复制',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurface.withOpacity(.45))),
+          if (filePath.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                '磁盘日志：$filePath',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.onSurface.withOpacity(.45)),
+              ),
+            ),
         ],
       ),
     );

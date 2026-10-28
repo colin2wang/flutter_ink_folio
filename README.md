@@ -12,6 +12,12 @@
 - Tuned screen refresh control to minimize flicker on e-ink hardware
 - Adjustable font size, line height, grayscale themes and custom fonts
 
+## On real hardware
+
+![Reading settings on a BOOX e-ink reader](docs/images/boox-reader-settings.jpg)
+
+*Running on a BOOX e-ink reader: bilingual book typography with the reading-settings panel open — serif/sans font, font size, line height, page margins, paragraph spacing, first-line indent, paper/light/night grayscale themes and the "full refresh every N pages" cadence. Everything applies instantly, no animations.*
+
 <details>
 <summary>Architecture (L1–L5)</summary>
 

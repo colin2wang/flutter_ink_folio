@@ -208,14 +208,24 @@ class _ReaderPageState extends State<ReaderPage> {
         if (_failure == null)
           SizedBox(
             height: webReaderProgressHeight,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ReadingProgressBar(
-                controller: controller,
-                height: webReaderProgressHeight,
-                // 气泡向上溢出会被 iframe 盖住，web 上只保留线本身
-                showLabel: false,
-              ),
+            // 进度尺可关（设置对话框）；但这条 14px 空白必须一直留着：
+            // iframe 的高度由 engine_host 按这个常量减掉，两边不一致会盖住正文
+            child: ListenableBuilder(
+              listenable: widget.settingsController,
+              builder: (ctx, _) {
+                if (!widget.settingsController.settings.showProgress) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: ReadingProgressBar(
+                    controller: controller,
+                    height: webReaderProgressHeight,
+                    // 气泡向上溢出会被 iframe 盖住，web 上只保留线本身
+                    showLabel: false,
+                  ),
+                );
+              },
             ),
           ),
       ],
@@ -334,6 +344,11 @@ class _ReaderPageState extends State<ReaderPage> {
     chars: book ? book.textContent.length : -1,
     blocks: document.querySelectorAll('.ink-book p').length,
     vp: vp ? vp.clientWidth + 'x' + vp.clientHeight : 'none',
+    // 页边距下在视口 padding 上（Pager 会从尺寸里扣掉），白屏/分栏异常时先看这个
+    pad: vp ? (function(){
+      var cs = getComputedStyle(vp);
+      return cs.paddingLeft + ',' + cs.paddingTop;
+    })() : 'none',
     container: (function(){
       var el = document.getElementById('page-container');
       return el ? el.clientWidth + 'x' + el.clientHeight : 'none';
@@ -414,18 +429,27 @@ class _ReaderPageState extends State<ReaderPage> {
           surface,
           if (_failure != null) _FailurePane(_failure!),
           // 底部阅读进度尺：落在 SafeArea 让出的手势条空白里，
-          // 既不遮挡正文、也不改变阅读区尺寸（覆盖式，不是布局子）
+          // 既不遮挡正文、也不改变阅读区尺寸（覆盖式，不是布局子）。
+          // 开关在设置对话框里，这里单独订阅（外层 child 不随设置重建）
           if (_failure == null)
             Positioned(
               left: 0,
               right: 0,
               bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: ReadingProgressBar(controller: controller),
-                ),
+              child: ListenableBuilder(
+                listenable: widget.settingsController,
+                builder: (ctx, _) {
+                  if (!widget.settingsController.settings.showProgress) {
+                    return const SizedBox.shrink();
+                  }
+                  return SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: ReadingProgressBar(controller: controller),
+                    ),
+                  );
+                },
               ),
             ),
           // 顶栏/底栏：默认隐藏，点中央切换（TS onToggleChrome 驱动）
