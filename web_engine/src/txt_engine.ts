@@ -1,4 +1,5 @@
 import { DartEvent, emit } from './bridge';
+import { loadText } from './io';
 import { Pager } from './pager';
 import {
   BookEngine,
@@ -55,7 +56,9 @@ export class TxtEngine implements BookEngine {
     emit(DartEvent.onMeta, { title: payload.bookId, author: '' });
     emit(DartEvent.onToc, { items: this.toc });
     // 恢复进度：优先字符偏移，其次百分比（cfi 字段在 txt 引擎中复用为百分比）
-    if (payload.start && payload.start > 0) this.goToOffset(payload.start);
+    // Dart 下发字段名为 startOffset，老版本是 start，两者都认
+    const start = payload.start ?? payload.startOffset ?? 0;
+    if (start > 0) this.goToOffset(start);
     else {
       const cfiNum = Number(payload.cfi);
       if (!Number.isNaN(cfiNum) && cfiNum > 0) this.goToPercent(cfiNum);
@@ -64,9 +67,9 @@ export class TxtEngine implements BookEngine {
   }
 
   private async loadFile(path: string): Promise<string> {
-    // Android WebView：allowUniversalAccessFromFileURLs 开启后可 fetch file://
-    const res = await fetch(path.startsWith('file:') ? path : `file://${path}`);
-    return await res.text();
+    // 正常路径是 Dart 直接下发 text（见 open）；这里只是 filePath 兜底。
+    // 不能用 fetch：Android WebView 的 fetch 不支持 file://（见 io.ts）
+    return await loadText(path);
   }
 
   private render(): void {

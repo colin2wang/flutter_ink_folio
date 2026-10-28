@@ -7,8 +7,21 @@ import {
 // 避免各处再从 types 二次 import（types 只描述协议，不负责分发）。
 export { DartEvent };
 
-/** postMessage 上行报文的标识（web 平台专用通道） */
+/** 上行报文标识：宿主只处理 source === INK_SOURCE 的 message 事件 */
 export const INK_SOURCE = 'ink-reader';
+
+/** 下行报文标识：宿主用 postMessage 下发命令时带 __ink: 'down' */
+export const INK_DOWN = 'down';
+
+/**
+ * 桥接协议版本：onReady 时上报。
+ * 宿主（lib/bridge/engine_host_web.dart 的 _engineProtocol）不一致就说明
+ * assets/web/main.js 是旧产物，直接提示重建，而不是白屏。
+ *
+ * **改了 Dart↔TS 的 payload 字段就要同步 +1**（与宿主常量一起改）：
+ * 3 = openBook 支持 `dataBase64`（web 端 EPUB 内嵌字节）
+ */
+export const ENGINE_PROTOCOL = 3;
 
 declare global {
   interface Window {
@@ -70,12 +83,60 @@ function flushUp(): void {
   }
 }
 
+/**
+ * Web(chrome/edge) 下行通道：宿主 → iframe。
+ *
+ * 引擎跑在同源 iframe 里（assets/web/index.html），宿主拿不到 window.__reader，
+ * 也不用 eval；命令统一 postMessage(JSON 字符串) 进来，这里解析后交给 dispatch。
+ * 非 iframe 场景（Android file:// 顶层页面）不走这条通道，继续用 evaluateJavascript。
+ */
+function listenHostCommands(): void {
+  if (window.parent === window) return;
+  window.addEventListener('message', (event: MessageEvent) => {
+    const msg = parseHostMessage(event.data);
+    if (!msg || msg.__ink !== INK_DOWN || typeof msg.action !== 'string') return;
+    try {
+      handler?.(msg.action, msg.payload);
+    } catch (e) {
+      emit(DartEvent.onError, { message: String(e) });
+    }
+  });
+}
+
+interface HostCommand {
+  __ink?: string;
+  action?: string;
+  payload?: unknown;
+}
+
+function parseHostMessage(raw: unknown): HostCommand | null {
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as HostCommand;
+    } catch {
+      return null; // 非 JSON 报文（Flutter 自身/浏览器扩展）直接忽略
+    }
+  }
+  return raw && typeof raw === 'object' ? (raw as HostCommand) : null;
+}
+
 /** Dart → TS 下行分发注册 */
 export function onDispatch(fn: (action: string, payload: unknown) => void): void {
   handler = fn;
 }
 
 export function installBridge(): void {
+  // 全局脚本报错先接住：引擎抛错/hover 失败的 Promise 默认只打控制台，
+  // release APK 上完全看不到（宿主那边有日志缓冲，能复制出来）
+  window.addEventListener('error', (e: ErrorEvent) => {
+    emit(DartEvent.onError, {
+      message: `js error: ${e.message} @${e.filename}:${e.lineno}`,
+    });
+  });
+  window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+    emit(DartEvent.onError, { message: `unhandled rejection: ${String(e.reason)}` });
+  });
+
   window.__reader = {
     dispatch: (msg: BridgeMessage) => {
       try {
@@ -85,8 +146,31 @@ export function installBridge(): void {
       }
     },
   };
-  // 不再轮询等 flutter_inappwebview：web 平台根本没有它，
-  // 等下去 onReady 永远发不出（Dart 侧队列不 flush → 阅读页白屏）。
-  flushUp();
-  emit(DartEvent.onReady);
+  listenHostCommands();
+
+  // 分支一：iframe（web 宿主）。同源 postMessage 就是通道，立即就绪
+  if (window.parent !== window) {
+    flushUp();
+    emit(DartEvent.onReady, { protocol: ENGINE_PROTOCOL });
+    return;
+  }
+
+  // 分支二：顶层页面（Android/iOS WebView）。flutter_inappwebview 是原生
+  // 异步注入的，注入前 emit 只会进 upQueue（parent === window 没有 postMessage
+  // 兜底），onReady 一丢 Dart 侧的 openBook 就永远留在队列里 → 手机白屏。
+  // 所以这里必须轮询等注入，约 9s 无果才放弃。
+  let tries = 0;
+  const probe = (): void => {
+    if (window.flutter_inappwebview) {
+      flushUp();
+      emit(DartEvent.onReady, { protocol: ENGINE_PROTOCOL });
+      return;
+    }
+    if (++tries <= 300) {
+      setTimeout(probe, 30);
+      return;
+    }
+    console.warn('[ink] flutter_inappwebview 未注入，上行通道不可用');
+  };
+  probe();
 }

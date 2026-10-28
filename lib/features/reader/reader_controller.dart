@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
@@ -9,6 +10,7 @@ import '../../data/models/annotation.dart';
 import '../../data/models/book.dart';
 import '../../data/models/reader_settings.dart';
 import '../../data/repo/repositories.dart';
+import '../../services/book_blob_store.dart';
 import '../../services/book_import_service.dart';
 import '../settings/settings_controller.dart';
 
@@ -40,6 +42,11 @@ class ReaderController extends ChangeNotifier {
   Map<String, dynamic>? pendingSelection;
 
   String? currentChapter;
+
+  /// 引擎上报的页码（0 起）与总页数，供底部进度尺的气泡文案用。
+  /// TXT 是全书页、EPUB 是本章页——只做相对位置参考，不入库
+  int pageIndex = 0;
+  int pageTotal = 0;
 
   void clearSelection() {
     pendingSelection = null;
@@ -77,6 +84,13 @@ class ReaderController extends ChangeNotifier {
     if (b.kind == 'txt') {
       text = await BookImportService.instance.loadTextContent(b);
     }
+    // web 上引擎读不到本地文件（没有 file:// 沙盒，fetch 也拒 file:），
+    // EPUB 的 zip 只能由 Dart 读好、以 base64 内嵌下发；Android 始终走 filePath
+    String? epubBase64;
+    if (kIsWeb && b.kind == 'epub') {
+      final bytes = BookBlobStore.instance.get(b.id);
+      if (bytes != null) epubBase64 = base64Encode(bytes);
+    }
     final highlights = annotations
         .where((a) => a.kind == 'highlight')
         .map((a) => {
@@ -92,6 +106,7 @@ class ReaderController extends ChangeNotifier {
       'kind': b.kind,
       'filePath': b.filePath,
       if (text != null) 'text': text,
+      if (epubBase64 != null) 'dataBase64': epubBase64,
       'cfi': b.cfi,
       'startOffset': b.startOffset,
       'highlights': highlights,
@@ -190,7 +205,7 @@ class ReaderController extends ChangeNotifier {
         toggleChrome();
         break;
       case DartEvent.onError:
-        appLog('engine error: ${payload['message']}');
+        appLog('engine error: ${payload['message']}', level: 'E');
         break;
       default:
         break;
@@ -202,6 +217,8 @@ class ReaderController extends ChangeNotifier {
     final b = book;
     if (b == null) return;
     currentChapter = payload['chapter'] as String? ?? currentChapter;
+    pageIndex = (payload['index'] as num?)?.toInt() ?? pageIndex;
+    pageTotal = (payload['total'] as num?)?.toInt() ?? pageTotal;
     b.percent = ((payload['percent'] as num?) ?? 0).toDouble();
     b.cfi = payload['cfi'] as String?;
     b.startOffset = (payload['start'] as num?)?.toInt() ?? b.startOffset;

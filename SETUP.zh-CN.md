@@ -138,8 +138,8 @@ Dart→TS：`window.__reader.dispatch(msg)`；TS→Dart：`callHandler('event', 
 
 ## 六、平台差异与已知边界
 
-1. **web（chrome）**：`flutter_inappwebview` v6 的 web 实现（iframe）。
-   - TXT 引擎可用（内容直传 payload）；EPUB 引擎在 web 上不可用（file:// 不可达）。
+1. **web（chrome/edge）**：阅读页自建同源 iframe 加载 `assets/web/index.html`，与 Dart 双向 `postMessage`。
+   - TXT 与 EPUB 都可用：TXT 内容直传 payload，EPUB 二进制由 Dart 读好后以 `dataBase64` 内嵌下发（web 上无可读沙盒路径；缓存在内存，刷新页面后需重新导入）。
    - sqflite 在 web 不可用：`Repositories` 工厂自动切换 SharedPreferences+内存实现。
    - 联调入口：`flutter run -d chrome`。
 2. **EPUB 引擎**：自研实现（JSZip 读 zip + 原生 DOMParser 解析 OPF/NCX/NAV），无第三方黑盒；关键调用包了 try/catch

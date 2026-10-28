@@ -1,5 +1,6 @@
 import { DartEvent, emit } from './bridge';
 import { EpubBook, EpubTocEntry, openEpub } from './epub/epub_book';
+import { loadBinary, base64ToBuffer } from './io';
 import { Pager } from './pager';
 import { applyTheme } from './renderer';
 import { clampColor, highlightRange, offsetOf } from './text';
@@ -63,8 +64,12 @@ export class EpubEngine implements BookEngine {
   }
 
   async open(payload: OpenBookPayload): Promise<void> {
-    const res = await fetch(toFileUrl(payload.filePath));
-    this.book = await openEpub(await res.arrayBuffer());
+    // 字节来源两条：web 端宿主以内嵌 base64 下发（读不到本地文件）；
+    // Android 走路径，用 XHR 读 file://（fetch 不支持 file:，见 io.ts）
+    const inline = payload.dataBase64
+      ? base64ToBuffer(payload.dataBase64)
+      : await loadBinary(payload.filePath);
+    this.book = await openEpub(inline);
 
     // 预计算各章起始偏移：进度换算与划线归属都依赖它，只算一次
     this.chapterStart = [];
@@ -312,8 +317,4 @@ export class EpubEngine implements BookEngine {
       offset: e.spineIndex,
     }));
   }
-}
-
-function toFileUrl(p: string): string {
-  return p.startsWith('file:') ? p : `file://${p}`;
 }

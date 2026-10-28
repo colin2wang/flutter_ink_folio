@@ -31,16 +31,76 @@ export class Pager {
   private page = 0;
   private total = 1;
   private timer: number | undefined;
+  private observer: ResizeObserver | null = null;
+  /** 上一次真正参与排版的视口尺寸，用来丢掉重复/过期的 resize */
+  private lastSize = '';
+  /** 是否已经就「视口与窗口不一致」告过警（避免每次 resize 刷屏） */
+  private healed = false;
 
   constructor(private readonly host: PagerHost) {
+    // 用 ResizeObserver 观测视口本身，而不是只靠 window.resize：
+    // 1) observe 时会立即回调一次真实尺寸，能纠正初始化时量到的过期值；
+    // 2) iframe 被宿主改尺寸时，iframe 内 window 的 resize 不一定触发，
+    //    一旦漏掉就永远按旧高度分栏（表现：正文只占左上角一小块，
+    //    其余内容被排到屏幕右侧看不见的下一栏）。
+    // 但 measure() 补过尺寸后会写死内联宽高，这时元素不再跟着窗口变，
+    // 所以 window.resize 仍要常驻。
+    if (typeof ResizeObserver !== 'undefined') {
+      this.observer = new ResizeObserver(() => this.onResize());
+      this.observer.observe(host.viewport);
+    }
     window.addEventListener('resize', this.onResize);
   }
 
   private readonly onResize = (): void => {
     if (this.timer) window.clearTimeout(this.timer);
     // 转屏/软键盘会连续触发 resize，必须防抖，否则墨水屏上会连续全刷
-    this.timer = window.setTimeout(() => this.relayout('keep-ratio'), RESIZE_DEBOUNCE_MS);
+    this.timer = window.setTimeout(() => {
+      const size = this.measure();
+      const key = size ? `${size.w}x${size.h}` : null;
+      if (!key || key === this.lastSize) return;
+      this.relayout('keep-ratio');
+    }, RESIZE_DEBOUNCE_MS);
   };
+
+  /**
+   * 量视口尺寸。
+   *
+   * 唯一可信的基准是「整个浏览器上下文有多大」——`.ink-viewport` 本身是
+   * `position:absolute; inset:0`，它**本该**等于窗口尺寸。量出来差一截，
+   * 说明这层定位没生效（样式没跟上，或者宿主 iframe 根本没铺满，
+   * 比如停在浏览器默认的 300×150）。这时必须按窗口尺寸纠正：
+   * 用错尺寸分栏，`column-width/height` 就全错，正文会缩在左上角一小条，
+   * 其余内容排到看不见的下一栏——日志里一切正常，屏幕上却像没渲染。
+   */
+  private measure(): { w: number; h: number } | null {
+    const doc = document.documentElement;
+    const winW = window.innerWidth || doc.clientWidth || 0;
+    const winH = window.innerHeight || doc.clientHeight || 0;
+    // 还没进入布局（宿主视图刚插入 / 尺寸 0）：交给调用方下一帧重试
+    if (!winW || !winH) return null;
+
+    const ew = this.host.viewport.clientWidth;
+    const eh = this.host.viewport.clientHeight;
+    if (ew && eh && Math.abs(ew - winW) <= 8 && Math.abs(eh - winH) <= 8) {
+      return { w: ew, h: eh };
+    }
+
+    const style = this.host.viewport.style;
+    const w = `${winW}px`;
+    const h = `${winH}px`;
+    if (style.width !== w || style.height !== h) {
+      style.width = w;
+      style.height = h;
+      if (!this.healed) {
+        // 走 console.warn：Android 会经 onConsoleMessage 进宿主的运行日志
+        console.warn(
+            `[ink] 视口 ${ew}x${eh} 与窗口 ${winW}x${winH} 不一致，已按窗口纠正`);
+      }
+    }
+    this.healed = true;
+    return { w: winW, h: winH };
+  }
 
   get index(): number {
     return this.page;
@@ -64,10 +124,21 @@ export class Pager {
    * 重新分栏。内容替换或样式变化后必须调用。
    * 读取 scrollWidth 会强制同步布局（reflow），因此调用后页数即为最终值。
    */
-  relayout(mode: RelayoutMode = 'keep-page'): void {
-    const vw = this.host.viewport.clientWidth;
-    const vh = this.host.viewport.clientHeight;
-    if (!vw || !vh) return;
+  relayout(mode: RelayoutMode = 'keep-page', retry = 0): void {
+    const size = this.measure();
+    if (!size) {
+      // 容器还没进入布局（首次打开/刚插入 DOM）：下一帧再量，
+      // 否则会按 0 尺寸分栏，正文全部挤在一栏里
+      if (retry < 20) {
+        requestAnimationFrame(() => this.relayout(mode, retry + 1));
+      } else {
+        console.warn('[ink] relayout 放弃：视口尺寸始终为 0（宿主视图没尺寸？）');
+      }
+      return;
+    }
+    const vw = size.w;
+    const vh = size.h;
+    this.lastSize = `${vw}x${vh}`;
 
     const prevRatio = this.ratio;
     const gap = this.gapOf(vw);
@@ -91,7 +162,7 @@ export class Pager {
 
   goToPage(page: number, notify = true): void {
     this.page = Math.max(0, Math.min(this.total - 1, page));
-    const vw = this.host.viewport.clientWidth;
+    const vw = this.measure()?.w ?? 0;
     this.host.content.style.transform = `translateX(${-this.page * (vw + this.gapOf(vw))}px)`;
     if (notify) this.host.onPageChanged(this.page, this.total);
   }
@@ -117,6 +188,8 @@ export class Pager {
   }
 
   destroy(): void {
+    this.observer?.disconnect();
+    this.observer = null;
     window.removeEventListener('resize', this.onResize);
     if (this.timer) window.clearTimeout(this.timer);
   }

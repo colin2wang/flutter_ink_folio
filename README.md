@@ -138,7 +138,7 @@ If you obtain an official vendor AAR SDK, replace the reflection branch in `reso
 
 ## Platform Notes
 
-1. **Web (Chrome)**: uses the `flutter_inappwebview` v6 web implementation (iframe). The TXT engine works (content passed inline); the EPUB engine does not (file:// unreachable). sqflite is unavailable on web — the `Repositories` factory automatically switches to SharedPreferences + in-memory implementations.
+1. **Web (Chrome)**: uses a same-origin iframe loading `assets/web/index.html`, talking to Dart over `postMessage`. Both TXT and EPUB work: TXT content is passed inline, EPUB bytes are read by Dart and shipped as `dataBase64` (there is no readable sandbox path on web; the blob lives in memory, so **re-import after a page reload**). sqflite is unavailable on web — the `Repositories` factory automatically switches to SharedPreferences + in-memory implementations.
 2. **EPUB engine**: in-house implementation (JSZip for zip + native DOMParser for OPF/NCX/NAV) — no third-party black box; key calls are wrapped in try/catch so engine failures never take down the shell — errors surface through the `onError` event.
 3. **Binaries not in the repo**: `gradle-wrapper.jar` (regenerate with `flutter create .`), font files (drop into `assets/fonts/`), vendor EPD AARs (as needed).
 

@@ -8,7 +8,8 @@ import '../core/app_log.dart';
 
 /// 把 assets/web/（TS 引擎产物或回退引擎）拷贝到沙盒，
 /// WebView 从 file:// 加载 —— 拷贝到 documents 下与书籍同盘，
-/// 配合 allowUniversalAccessFromFileURLs 即可 fetch 书籍/字体。
+/// 配合 allowFileAccessFromFileURLs 即可用 **XHR** 读书籍/字体。
+/// 注意不能用 `fetch`：Blink 的 Fetch 不支持 file:// scheme（见 web_engine/src/io.ts）。
 class WebAssetCopier {
   WebAssetCopier._();
   static final instance = WebAssetCopier._();

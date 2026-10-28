@@ -46,6 +46,8 @@ export interface OpenBookPayload {
   kind: 'txt' | 'epub';
   filePath: string;
   text?: string; // txt 直传内容（web 平台文件不可达）
+  /** epub 直传字节（base64）：web 端引擎读不到本地文件，由 Dart 读好嵌进来 */
+  dataBase64?: string;
   cfi?: string;
   start?: number;
   /** Dart 侧实际下发的进度字段名（reader_controller.openBookInEngine 用 startOffset） */

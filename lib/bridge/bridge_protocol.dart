@@ -1,3 +1,10 @@
+/// 引擎桥接协议版本：与 `web_engine/src/bridge.ts` 的 `ENGINE_PROTOCOL` 必须同值。
+///
+/// **改动 Dart↔TS 的 payload 字段就要两边一起 +1**。web 宿主在 onReady 时比对，
+/// 不一致就提示「产物过旧」——否则漏跑 `build_web.ps1` 时一切静默失败。
+/// 3 = openBook 支持 `dataBase64`（web 端 EPUB 内嵌字节）
+const int engineProtocolVersion = 3;
+
 /// 统一 JSON 信封协议（Dart ↔ TS）。
 /// Dart→TS 走 evaluateJavascript 调 window.__reader.dispatch(msg)
 /// TS→Dart 走 window.flutter_inappwebview.callHandler('event', msg)

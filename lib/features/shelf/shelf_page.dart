@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_log.dart';
 import '../../data/models/book.dart';
 import '../../data/repo/repositories.dart';
+import '../../services/book_blob_store.dart';
 import '../../services/book_import_service.dart';
 import '../../theme/instant_route.dart';
+import '../debug/log_page.dart';
 import '../settings/settings_controller.dart';
 import '../reader/reader_page.dart';
 
@@ -34,17 +37,36 @@ class _ShelfPageState extends State<ShelfPage> {
   }
 
   Future<void> _import() async {
+    // 日志放在 busy 判断之前：按钮被禁用/卡住时也要留下痕迹，
+    // 否则现象就是「点了什么都没发生，日志也空」
+    appLog('[shelf] 点击导入 busy=$_busy');
     if (_busy) return;
     setState(() => _busy = true);
-    final id = await BookImportService.instance.pickAndImport();
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (id == null) {
+    ImportResult? result;
+    try {
+      result = await BookImportService.instance.pickAndImport();
+    } finally {
+      // 无论抛错/超时都要解锁，否则按钮永久禁用且之后点一下没任何反应
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted || result == null) return;
+    // 取消不再静默：否则「选了却未被收到」与「主动取消」在用户眼里一样，
+    // 都会变成「点了没反应」
+    if (result.isCancelled) {
+      appLog('[shelf] 选择器无返回（取消或未取到文件）');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('未导入：仅支持 .txt / .epub')),
+        const SnackBar(content: Text('未收到文件（取消选择或未被选中）')),
       );
       return;
     }
+    if (!result.isOk) {
+      appLog('[shelf] 导入失败：${result.reason}', level: 'E');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.reason ?? '导入失败')),
+      );
+      return;
+    }
+    appLog('[shelf] 导入成功 id=${result.bookId}');
     await _refresh();
   }
 
@@ -64,6 +86,7 @@ class _ShelfPageState extends State<ShelfPage> {
     await Repositories.library.deleteBook(book.id);
     await Repositories.annotations.removeForBook(book.id);
     await Repositories.content.delete(book.id);
+    BookBlobStore.instance.remove(book.id);
     await _refresh();
   }
 
@@ -85,8 +108,19 @@ class _ShelfPageState extends State<ShelfPage> {
       appBar: AppBar(
         title: const Text('书架'),
         actions: [
+          // debug 入口：运行日志（release 也常驻，手机上出问题靠它把日志取出来）
           IconButton(
-            onPressed: _busy ? null : _import,
+            onPressed: () => Navigator.of(context).push(instantRoute(
+              const LogPage(),
+              settings: const RouteSettings(name: '/debug/logs'),
+            )),
+            icon: const Icon(Icons.bug_report_outlined),
+            tooltip: '运行日志',
+          ),
+          IconButton(
+            // 不用 `_busy ? null : _import`：onPressed 为 null 时点击完全不触发，
+            // 「按钮禁用了」和「代码没跑」在日志里无法区分
+            onPressed: _import,
             icon: const Icon(Icons.add),
             tooltip: '导入 .txt / .epub',
           ),

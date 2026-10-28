@@ -1,21 +1,17 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../core/app_log.dart';
 import 'bridge_protocol.dart';
-// web 平台改用 postMessage 收上行消息（addJavaScriptHandler 在该平台未实现）
-import 'web_message_stub.dart' if (dart.library.html) 'web_message_web.dart';
 
 typedef TsEventHandler = void Function(String event, Map<String, dynamic> payload);
 
-/// Dart → TS 的调用封装 + TS → Dart 的事件分发。
+/// Dart → TS 的调用封装 + TS → Dart 的事件分发（仅 Android/iOS 用）。
 ///
-/// 平台差异：
-/// - Android/iOS：WebView 从沙盒拷贝目录 loadFile，JS 可 fetch file:// 书籍。
-/// - Web(chrome)：flutter_inappwebview 6 的 web 实现（iframe），
-///   JS 拿不到本地文件，因此 txt 内容由 Dart 直接塞进 openBook payload。
+/// 下行 evaluateJavascript 调 window.__reader.dispatch，上行 JavaScriptHandler。
+/// Web(chrome/edge) 不再走这里：该平台没有 addJavaScriptHandler，
+/// 阅读页改为自建同源 iframe + postMessage（见 bridge/engine_host.dart）。
 class JsBridge {
   JsBridge(this._onEvent);
 
@@ -23,20 +19,10 @@ class JsBridge {
   InAppWebViewController? _controller;
   bool _pageReady = false;
   final List<Map<String, dynamic>> _pending = [];
-  void Function()? _stopWebListener;
 
-  /// TS → Dart 上行通道绑定。
-  ///
-  /// - Android/iOS：JavaScriptHandler，TS 侧 callHandler('event', msg)。
-  /// - Web(chrome/edge)：flutter_inappwebview_web 未实现 addJavaScriptHandler
-  ///   （调用即抛 UnimplementedError，导致阅读页整页崩成白屏），
-  ///   改为监听宿主 window 的 message 事件，收引擎 postMessage 上来的 JSON。
+  /// TS → Dart 上行通道绑定（JavaScriptHandler）。
   void bind(InAppWebViewController controller) {
     _controller = controller;
-    if (kIsWeb) {
-      _stopWebListener = listenEngineMessages(_handleMessage);
-      return;
-    }
     controller.addJavaScriptHandler(
       handlerName: DartEvent.handlerName,
       callback: (args) {
@@ -74,11 +60,19 @@ class JsBridge {
   }
 
   void detach() {
-    _stopWebListener?.call();
-    _stopWebListener = null;
     _controller = null;
     _pageReady = false;
     _pending.clear();
+  }
+
+  /// 页面已 load：`defer` 脚本先于 load 事件执行，此时 `window.__reader` 必定存在。
+  ///
+  /// 下行不等 onReady：原生桥注入慢/丢包时 onReady 可能到不了，
+  /// 那样队列里的 openBook 就永远发不出去（手机白屏）。
+  void markPageReady() {
+    if (_pageReady) return;
+    _pageReady = true;
+    _flushPending();
   }
 
   /// Dart → TS：等 onReady 后再发，未就绪先进队列（页面加载竞态保护）
@@ -100,16 +94,36 @@ class JsBridge {
     }
   }
 
+  /// 取证用：在页面里跑一段 JS 并把结果拿回来（Android/iOS 才有）。
+  ///
+  /// 手机白屏时靠它一次问清：脚本/原生桥在不在、正文画出来没有、视口多大。
+  Future<String?> evalRaw(String js) async {
+    final c = _controller;
+    if (c == null) return null;
+    try {
+      final value = await c.evaluateJavascript(source: js);
+      return value == null ? 'null' : value.toString();
+    } catch (e) {
+      return 'eval failed: $e';
+    }
+  }
+
   Future<void> _send(Map<String, dynamic> msg) async {
     final c = _controller;
     if (c == null) return;
-    final encoded = jsonEncode(msg);
+    // U+2028/2029 在 JS 源码里是行终结符，JSON 合法但塞进 eval 会变 SyntaxError
+    final encoded = jsonEncode(msg)
+        .replaceAll('\u2028', r'\u2028')
+        .replaceAll('\u2029', r'\u2029');
+    final source = 'window.__reader && window.__reader.dispatch($encoded);';
+    if (source.length > 200000) {
+      appLog('JsBridge: 下发报文 ${source.length} 字符，Android 可能被截断',
+          level: 'W');
+    }
     try {
-      await c.evaluateJavascript(
-        source: 'window.__reader && window.__reader.dispatch($encoded);',
-      );
+      await c.evaluateJavascript(source: source);
     } catch (e) {
-      appLog('JsBridge post($encoded) error: $e');
+      appLog('JsBridge post(${msg['action']}) error: $e', level: 'E');
     }
   }
 }
@@ -119,7 +133,7 @@ InAppWebViewSettings webViewSettings() {
   return InAppWebViewSettings(
     javaScriptEnabled: true,
     transparentBackground: true,
-    // 本地文件：TS 引擎需 fetch file:/// 沙盒中的书籍（含字体、epub）
+    // 本地文件：引擎用 XHR 读沙盒里的书籍/字体/epub（fetch 不支持 file://）
     allowFileAccess: true,
     allowFileAccessFromFileURLs: true,
     allowUniversalAccessFromFileURLs: true,
@@ -134,9 +148,13 @@ InAppWebViewSettings webViewSettings() {
   );
 }
 
-/// web 调试时的诊断日志
+/// WebView 控制台日志：始终进运行日志缓冲。
+///
+/// 不能再用 kDebugMode 门控：手机装的是 release APK，而引擎的报错
+/// （`main.js` 抛错、`openBook` 失败）只在 WebView 控制台里。
+/// 注意 `ConsoleMessageLevel` 的 `==` 是坏的（比的是 int），只能看 toString。
 void debugWebConsole(ConsoleMessage message) {
-  if (kDebugMode) {
-    debugPrint('[webview] ${message.messageLevel}: ${message.message}');
-  }
+  final level = message.messageLevel.toString();
+  final isError = level == 'ERROR';
+  appLog('[webview/$level] ${message.message}', level: isError ? 'E' : 'W');
 }

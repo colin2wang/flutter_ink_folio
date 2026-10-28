@@ -47,6 +47,7 @@ pnpm build && cp -r dist/* ../assets/web/
 - 打开 EPUB 时会把各章自带的 CSS 内联进 body —— 引擎只取 `body.innerHTML`，
   留在 `head` 里的样式会丢失。
 - 产物 base 为 `./`，允许直接 file:// 加载。
-- Web 平台（chrome）下 WebView 取不到本地文件：TXT 由 Dart 直传内容可用，
-  EPUB 依赖 file:// 因此不可用。
+- Web 平台（chrome）下引擎取不到本地文件：TXT 由 Dart 直传 `text`，
+  EPUB 由 Dart 读好以 `dataBase64` 内嵌下发（`epub_engine.open` 优先用它，
+  否则 `loadBinary(filePath)` 走 XHR；web 侧缓存只在内存，刷新页面即失效）。
 - 全局禁动画/渐变/模糊 —— 这是墨水屏引擎的硬约束，别加回来。
